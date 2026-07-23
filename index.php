@@ -1,20 +1,20 @@
-<?php 
+<?php
 // 1. Сессия должна быть САМОЙ первой строкой кода
 session_start(); 
 
-// Подключаем базу. Убедись, что в db.php создается переменная $db
+// Подключаем базу (использует соединение PostgreSQL через $db)
 include 'db.php'; 
 
-// Проверяем, залогинен ли пользователь (этот флаг перекинет его на кнопки вместо формы)
+// Проверяем, залогинен ли пользователь
 $is_logged = isset($_SESSION['user_id']);
 
 include 'header.php'; 
 
-// Считаем жителей (безопасный запрос)
+// Считаем жителей (безопасный запрос для PostgreSQL)
 $total = 0;
-$res = $db->query("SELECT COUNT(id) as cnt FROM users");
+$res = pg_query($db, "SELECT COUNT(id) as cnt FROM users");
 if ($res) {
-    $row = $res->fetch_assoc();
+    $row = pg_fetch_assoc($res);
     $total = $row['cnt'];
 }
 ?>
@@ -89,4 +89,3 @@ if ($res) {
 <p style='text-align:center; color:#555; margin-top:20px;'>Love City Online &copy; 2026</p>
 </body>
 </html>
-
