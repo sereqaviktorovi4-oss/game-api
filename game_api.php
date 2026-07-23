@@ -47,7 +47,7 @@ if ($action == 'login') {
 // 2. ПОЛУЧЕНИЕ ДАННЫХ ПРОФИЛЯ
 // ==========================================
 elseif ($action == 'get_profile') {
-    $user_id = intval($_POST['user_id'] ?? 0);
+    $user_id = intval($_POST['user_id'] ?? $_GET['user_id'] ?? 0);
 
     if ($user_id > 0) {
         $result = pg_query($db, "SELECT username, status_text, gender, plot_coords, money FROM users WHERE id = $user_id");
@@ -78,21 +78,26 @@ elseif ($action == 'get_profile') {
 }
 
 // ==========================================
-// 3. СОХРАНЕНИЕ ПОСТРОЙКИ
+// 3. СОХРАНЕНИЕ ПОСТРОЙКИ (Связка с таблицей builds)
 // ==========================================
 elseif ($action == 'save_build') {
     $user_id = intval($_POST['user_id'] ?? 0);
     $x = floatval($_POST['x'] ?? 0);
     $y = floatval($_POST['y'] ?? 0);
     $z = floatval($_POST['z'] ?? 0);
-    $shape = pg_escape_string($db, $_POST['shape'] ?? '');
-    $color = pg_escape_string($db, $_POST['color'] ?? '');
-    $tex = pg_escape_string($db, $_POST['texture'] ?? '');
-    $dist = pg_escape_string($db, $_POST['district'] ?? '');
+    
+    // Поддержка полей под актуальную структуру таблицы builds
+    $build_type = pg_escape_string($db, $_POST['shape'] ?? $_POST['build_type'] ?? 'default');
 
-    pg_query($db, "INSERT INTO builds (user_id, pos_x, pos_y, pos_z, shape_type, color_hex, texture_url, district) 
-                VALUES ($user_id, $x, $y, $z, '$shape', '$color', '$tex', '$dist')");
-    echo "saved";
+    $query = "INSERT INTO builds (user_id, pos_x, pos_y, pos_z, build_type) 
+              VALUES ($user_id, $x, $y, $z, '$build_type')";
+              
+    $res = pg_query($db, $query);
+    if ($res) {
+        echo "saved";
+    } else {
+        echo "error";
+    }
 }
 
 // ==========================================
@@ -103,18 +108,28 @@ elseif ($action == 'load_all_builds') {
     $builds = [];
     if ($res) {
         while($row = pg_fetch_assoc($res)) {
-            $builds[] = $row;
+            // Приводим поля к универсальному виду для клиента
+            $builds[] = [
+                "id" => $row['id'],
+                "user_id" => $row['user_id'],
+                "x" => floatval($row['pos_x']),
+                "y" => floatval($row['pos_y']),
+                "z" => floatval($row['pos_z']),
+                "shape" => $row['build_type'] ?? 'default',
+                "color" => $row['color_hex'] ?? '',
+                "texture" => $row['texture_url'] ?? ''
+            ];
         }
     }
-    header('Content-Type: application/json');
-    echo json_encode($builds);
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode($builds, JSON_UNESCAPED_UNICODE);
 }
 
 // ==========================================
 // 5. ДАННЫЕ УЧАСТКА
 // ==========================================
 elseif ($action == 'get_land') {
-    $name = pg_escape_string($db, $_GET['name'] ?? '');
+    $name = pg_escape_string($db, $_GET['name'] ?? $_POST['name'] ?? '');
     $res = pg_query($db, "SELECT pos_x, pos_y, pos_z, plot_coords FROM users WHERE username='$name'");
     
     if ($res && pg_num_rows($res) > 0) {
@@ -126,17 +141,17 @@ elseif ($action == 'get_land') {
         $raw_dist = trim((string)($data['plot_coords'] ?? ''));
         $ldist = (empty($raw_dist) || $raw_dist === '0' || $raw_dist === '0,0,0') ? '1-1' : $raw_dist;
 
-        header('Content-Type: application/json');
+        header('Content-Type: application/json; charset=utf-8');
         echo json_encode([
             "status" => "success",
             "x" => $lx,
             "y" => $ly,
             "z" => $lz,
             "district" => $ldist
-        ]);
+        ], JSON_UNESCAPED_UNICODE);
     } else {
-        header('Content-Type: application/json');
-        echo json_encode(["status" => "error", "message" => "not_found"]);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(["status" => "error", "message" => "not_found"], JSON_UNESCAPED_UNICODE);
     }
 }
 
