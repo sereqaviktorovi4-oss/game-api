@@ -1,13 +1,13 @@
-<?php
-include 'db.php';
-session_start();
-include 'header.php';
+<?php 
+include 'db.php'; 
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
+include 'header.php'; 
 
 if (!isset($_SESSION['user_id'])) { header("Location: login.php"); exit; }
 $my_id = (int)$_SESSION['user_id'];
 
-// Запрос для получения списка диалогов
-$query = $db->query("
+// Запрос для получения списка диалогов (адаптирован под PostgreSQL)
+$query = pg_query($db, "
     SELECT u.id, u.username, u.avatar_path, u.gender,
     MAX(m.created_at) as last_date,
     (SELECT message FROM messages 
@@ -19,7 +19,7 @@ $query = $db->query("
     FROM users u
     JOIN messages m ON (u.id = m.sender_id OR u.id = m.receiver_id)
     WHERE (m.sender_id = $my_id OR m.receiver_id = $my_id) AND u.id != $my_id
-    GROUP BY u.id
+    GROUP BY u.id, u.username, u.avatar_path, u.gender
     ORDER BY unread_count DESC, last_date DESC
 ");
 ?>
@@ -30,14 +30,14 @@ $query = $db->query("
     </h2>
 
     <div style="display: flex; flex-direction: column; gap: 12px;">
-        <?php if ($query && $query->num_rows > 0): ?>
-            <?php while($chat = $query->fetch_assoc()): ?>
+        <?php if ($query && pg_num_rows($query) > 0): ?>
+            <?php while($chat = pg_fetch_assoc($query)): ?>
                 <a href="messages.php?to=<?php echo $chat['id']; ?>" 
                    style="text-decoration: none; display: flex; align-items: center; gap: 15px; background: #1c1c24; padding: 15px; border-radius: 20px; border: 1px solid <?php echo $chat['unread_count'] > 0 ? 'var(--accent)' : '#2a2a35'; ?>; transition: 0.3s; box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
                     
                     <div style="width: 55px; height: 55px; position: relative; flex-shrink: 0;">
                         <?php if(!empty($chat['avatar_path'])): ?>
-                            <img src="<?php echo $chat['avatar_path']; ?>" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; border: 2px solid #333;">
+                            <img src="<?php echo htmlspecialchars($chat['avatar_path']); ?>" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; border: 2px solid #333;">
                         <?php else: ?>
                             <div style="width: 100%; height: 100%; background: #13131a; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.6rem; border: 2px solid #333;">
                                 <?php echo ($chat['gender'] == 'f' ? '👧' : '👦'); ?>
@@ -73,7 +73,6 @@ $query = $db->query("
 </div>
 
 <?php 
-// Если footer.php так и не создашь, теги закроются здесь:
+pg_close($db);
 echo "</div></body></html>"; 
 ?>
-
