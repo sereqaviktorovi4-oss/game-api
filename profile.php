@@ -1,6 +1,6 @@
 <?php 
 include 'db.php'; 
-session_start();
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
 include 'header.php'; 
 
 if (!isset($_SESSION['user_id'])) { header("Location: login.php"); exit; }
@@ -9,8 +9,8 @@ $my_id = (int)$_SESSION['user_id'];
 $view_id = isset($_GET['id']) ? (int)$_GET['id'] : $my_id;
 $is_own_profile = ($view_id === $my_id);
 
-$res = $db->query("SELECT * FROM users WHERE id=$view_id");
-$user = $res->fetch_assoc();
+$res = pg_query($db, "SELECT * FROM users WHERE id=$view_id");
+$user = ($res) ? pg_fetch_assoc($res) : null;
 
 if (!$user) { echo "<h2 style='text-align:center;'>Житель не найден в базе данных города.</h2>"; exit; }
 
@@ -19,15 +19,16 @@ $friend_status = 'none';
 $is_sender = false; 
 
 if (!$is_own_profile) {
-    $check_f = $db->query("SELECT * FROM friends WHERE (user_id=$my_id AND friend_id=$view_id) OR (user_id=$view_id AND friend_id=$my_id) LIMIT 1");
-    if ($f_data = $check_f->fetch_assoc()) {
+    $check_f = pg_query($db, "SELECT * FROM friends WHERE (user_id=$my_id AND friend_id=$view_id) OR (user_id=$view_id AND friend_id=$my_id) LIMIT 1");
+    if ($check_f && $f_data = pg_fetch_assoc($check_f)) {
         $friend_status = $f_data['status'];
         if ($f_data['user_id'] == $my_id) $is_sender = true;
     }
 }
 
-$photos = $db->query("SELECT * FROM user_photos WHERE user_id=$view_id ORDER BY id DESC LIMIT 12");
-$friends_count = $db->query("SELECT id FROM friends WHERE (user_id=$view_id OR friend_id=$view_id) AND status='accepted'")->num_rows;
+$photos = pg_query($db, "SELECT * FROM user_photos WHERE user_id=$view_id ORDER BY id DESC LIMIT 12");
+$friends_count_res = pg_query($db, "SELECT id FROM friends WHERE (user_id=$view_id OR friend_id=$view_id) AND status='accepted'");
+$friends_count = ($friends_count_res) ? pg_num_rows($friends_count_res) : 0;
 ?>
 
 <style>
@@ -90,7 +91,10 @@ $friends_count = $db->query("SELECT id FROM friends WHERE (user_id=$view_id OR f
                     <div style="font-size: 5rem; margin-top: 25px;"><?php echo ($user['gender'] == 'm' ? '👦' : '👧'); ?></div>
                 <?php endif; ?>
             </div>
-            <?php if ($user['last_active'] > date('Y-m-d H:i:s', strtotime('-5 minutes'))): ?>
+            <?php 
+                $last_active = isset($user['last_active']) ? strtotime($user['last_active']) : 0;
+                if ($last_active > (time() - 300)): 
+            ?>
                 <div class="online-indicator" title="В игре"></div>
             <?php endif; ?>
         </div>
@@ -140,32 +144,32 @@ $friends_count = $db->query("SELECT id FROM friends WHERE (user_id=$view_id OR f
         <p style="font-size: 0.65rem; color: #555; text-transform: uppercase; margin-bottom: 5px;">Трофеи жителя</p>
         <div class="gift-shelf">
             <?php
-            $gifts = $db->query("SELECT * FROM user_gifts WHERE receiver_id = $view_id ORDER BY id DESC LIMIT 12");
-            if($gifts->num_rows > 0):
-                while($g = $gifts->fetch_assoc()): ?>
+            $gifts = pg_query($db, "SELECT * FROM user_gifts WHERE receiver_id = $view_id ORDER BY id DESC LIMIT 12");
+            if($gifts && pg_num_rows($gifts) > 0):
+                while($g = pg_fetch_assoc($gifts)): ?>
                     <div class="gift-slot"><img src="<?php echo htmlspecialchars($g['gift_icon']); ?>" class="gift-premium-img"></div>
                 <?php endwhile; 
             else: echo "<span style='color:#444;font-size:0.7rem;'>Пусто</span>"; endif; ?>
         </div>
 
         <div style="text-align: left; font-size: 0.85rem; color: #bbb; background: #1a1a24; padding: 15px; border-radius: 12px; margin-top: 20px;">
-            <p style="margin: 5px 0;"><i class="fa-solid fa-location-arrow" style="width: 20px; color: var(--accent);"></i> Район: <b><?php echo $user['district_name'] ?: 'Love Sector A'; ?></b></p>
-            <p style="margin: 5px 0;"><i class="fa-solid fa-house" style="width: 20px; color: var(--accent);"></i> Участок: <b><?php echo $user['plot_coords'] ?: 'Не занят'; ?></b></p>
-            <p style="margin: 5px 0;"><i class="fa-solid fa-coins" style="width: 20px; color: gold;"></i> Капитал: <span style="color:gold;"><?php echo number_format($user['citymoney']); ?></span></p>
+            <p style="margin: 5px 0;"><i class="fa-solid fa-location-arrow" style="width: 20px; color: var(--accent);"></i> Район: <b><?php echo !empty($user['district_name']) ? $user['district_name'] : 'Love Sector A'; ?></b></p>
+            <p style="margin: 5px 0;"><i class="fa-solid fa-house" style="width: 20px; color: var(--accent);"></i> Участок: <b><?php echo !empty($user['plot_coords']) ? $user['plot_coords'] : 'Не занят'; ?></b></p>
+            <p style="margin: 5px 0;"><i class="fa-solid fa-coins" style="width: 20px; color: gold;"></i> Капитал: <span style="color:gold;"><?php echo number_format($user['citymoney'] ?? 0); ?></span></p>
         </div>
     </div>
 
     <div>
         <div style="background: #252530; padding: 20px; border-radius: 15px; border-left: 6px solid #ff00ff; margin-bottom: 25px;">
             <h4 style="margin: 0 0 10px 0; color: #aaa; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px;">Клубный девиз</h4>
-            <div style="font-size: 1.2rem; font-style: italic; color: #efefef;">"<?php echo htmlspecialchars($user['status_text'] ?: 'Я здесь новый житель!'); ?>"</div>
+            <div style="font-size: 1.2rem; font-style: italic; color: #efefef;">"<?php echo htmlspecialchars(!empty($user['status_text']) ? $user['status_text'] : 'Я здесь новый житель!'); ?>"</div>
         </div>
 
         <div style="background: #252530; padding: 25px; border-radius: 20px; border: 1px solid #333;">
             <h3 style="margin: 0 0 20px 0; font-size: 1.1rem;"><i class="fa-solid fa-images" style="color: var(--accent);"></i> Галерея жителя</h3>
             <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 12px;">
-                <?php if ($photos->num_rows > 0): ?>
-                    <?php while($ph = $photos->fetch_assoc()): ?>
+                <?php if ($photos && pg_num_rows($photos) > 0): ?>
+                    <?php while($ph = pg_fetch_assoc($photos)): ?>
                         <div style="aspect-ratio: 1/1; border-radius: 10px; overflow: hidden; border: 2px solid #1c1c24;">
                             <img src="<?php echo $ph['photo_path']; ?>" style="width: 100%; height: 100%; object-fit: cover;">
                         </div>
@@ -233,7 +237,6 @@ $friends_count = $db->query("SELECT id FROM friends WHERE (user_id=$view_id OR f
 function sendGift(url) {
     if(!confirm("Отправить этот подарок за 30 CM?")) return;
     
-    // Используем FormData для надежной отправки
     let formData = new URLSearchParams();
     formData.append('to_id', '<?php echo $view_id; ?>');
     formData.append('icon', url);
@@ -258,4 +261,7 @@ function sendGift(url) {
 }
 </script>
 
-<?php echo "</div></body></html>"; ?>
+<?php 
+pg_close($db);
+echo "</div></body></html>"; 
+?>
