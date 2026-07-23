@@ -5,29 +5,27 @@ include 'db.php';
 
 // Обрабатываем POST-запрос до вывода любого контента
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    $username = $db->real_escape_string(trim($_POST['username']));
-    $password = $_POST['password'];
+    $username = pg_escape_string($db, trim($_POST['username'] ?? ''));
+    $password = $_POST['password'] ?? '';
 
-    // Ищем пользователя (выбираем все поля, включая plot_coords)
-    $result = $db->query("SELECT * FROM users WHERE username='$username'");
+    // Ищем пользователя
+    $result = pg_query($db, "SELECT * FROM users WHERE username='$username'");
     
-    if ($result && $result->num_rows > 0) {
-        $user = $result->fetch_assoc();
+    if ($result && pg_num_rows($result) > 0) {
+        $user = pg_fetch_assoc($result);
         
         // Проверка пароля
         if (password_verify($password, $user['password'])) {
             // Сохраняем данные в сессию
             $_SESSION['user_id'] = $user['id'];
             $_SESSION['username'] = $user['username'];
-            $_SESSION['gender'] = $user['gender'];
+            $_SESSION['gender'] = $user['gender'] ?? 'm';
             
-            // ==========================================
             // СОХРАНЯЕМ КООРДИНАТЫ УЧАСТКА В СЕССИЮ
-            // ==========================================
             $_SESSION['plot_coords'] = !empty($user['plot_coords']) ? $user['plot_coords'] : "";
             
             // Обновляем статус в базе: зашел через сайт (web)
-            $db->query("UPDATE users SET platform='web', last_seen=NOW() WHERE id='" . $user['id'] . "'");
+            pg_query($db, "UPDATE users SET platform='web', last_seen=NOW() WHERE id=" . intval($user['id']));
             
             // Мгновенный редирект на главную
             header("Location: index.php"); 
@@ -41,7 +39,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 }
 
 // Теперь подключаем визуальную часть
-include 'header.php'; 
+if (file_exists('header.php')) {
+    include 'header.php'; 
+}
 ?>
 
 <div style="max-width: 400px; margin: 50px auto; text-align: center; background: #1c1c24; padding: 30px; border-radius: 15px; border: 1px solid #333; font-family: sans-serif;">
@@ -69,7 +69,8 @@ include 'header.php';
 </div>
 
 <?php 
-// Закрываем соединение в самом конце
-$db->close();
-include 'footer.php'; 
+pg_close($db);
+if (file_exists('footer.php')) {
+    include 'footer.php'; 
+}
 ?>
