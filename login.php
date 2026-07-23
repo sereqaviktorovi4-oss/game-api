@@ -1,6 +1,6 @@
 <?php 
 // 1. ЗАПУСК СЕССИИ — строго первая строка
-session_start(); 
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
 include 'db.php'; 
 
 // Обрабатываем POST-запрос до вывода любого контента
