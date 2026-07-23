@@ -1,6 +1,6 @@
 <?php 
 include 'db.php'; 
-session_start();
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
 include 'header.php'; 
 
 if (!isset($_SESSION['user_id'])) {
@@ -128,18 +128,22 @@ if (!isset($_SESSION['user_id'])) {
         e.preventDefault();
         const msg = msgInput.value.trim();
         if(!msg) return;
+        
         fetch('send_message.php', {
             method: 'POST',
             headers: {'Content-Type': 'application/x-www-form-urlencoded'},
             body: 'message=' + encodeURIComponent(msg)
-        }).then(() => { 
+        })
+        .then(response => response.text())
+        .then(result => {
             msgInput.value = ''; 
             fetch('update_typing.php?status=0');
             loadMessages(); 
-        });
+        })
+        .catch(error => console.error('Ошибка отправки:', error));
     };
 
     setInterval(loadMessages, 2500);
     loadMessages();
 </script>
-
+</div></body></html>
