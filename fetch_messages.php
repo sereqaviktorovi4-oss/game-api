@@ -4,11 +4,11 @@ if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
 $my_username = $_SESSION['username'] ?? '';
 
-// Подтягиваем сообщения и ID пользователя для меню
+// Подтягиваем сообщения и ID пользователя через надежную связь по user_id
 $sql = "
-    SELECT c.*, u.id as u_id 
+    SELECT c.*, u.id as u_id, u.username as real_username
     FROM chat c 
-    LEFT JOIN users u ON c.username = u.username 
+    LEFT JOIN users u ON c.user_id = u.id 
     ORDER BY c.id DESC LIMIT 40
 ";
 
@@ -17,7 +17,10 @@ $rows = [];
 
 if ($result) {
     while($m = pg_fetch_assoc($result)) {
-        $is_me = ($m['username'] === $my_username);
+        // Если имя в чате вдруг пустое, берем из таблицы users
+        $display_username = !empty($m['username']) ? $m['username'] : ($m['real_username'] ?? 'Гость');
+        
+        $is_me = ($display_username === $my_username);
         
         // Прямое управление позицией (flex-end - право, flex-start - лево)
         $side = $is_me ? 'flex-end' : 'flex-start';
@@ -25,13 +28,13 @@ if ($result) {
         $border = $is_me ? 'border-right: 3px solid var(--accent); border-bottom-right-radius: 2px;' : 'border-left: 3px solid var(--primary); border-bottom-left-radius: 2px;';
         $nick_color = $is_me ? 'var(--accent)' : 'var(--primary)';
         
-        $time = date('H:i', strtotime($m['created_at']));
+        $time = isset($m['created_at']) ? date('H:i', strtotime($m['created_at'])) : '';
 
         // Используем структуру в точности как в привате
         $html = "
         <div class='msg-row' style='display: flex; flex-direction: column; width: 100%; align-items: {$side}; margin-bottom: 10px;'>
             <div class='chat-nick' data-id='{$m['u_id']}' style='color: {$nick_color}; cursor: pointer; font-weight: bold; font-size: 0.75rem; margin-bottom: 2px; padding: 0 10px;'>
-                " . htmlspecialchars($m['username']) . "
+                " . htmlspecialchars($display_username) . "
             </div>
             <div class='bubble' style='max-width: 85%; padding: 10px 14px; border-radius: 18px; font-size: 0.95rem; background: {$bg}; color: #fff; {$border} box-shadow: 0 2px 5px rgba(0,0,0,0.3);'>
                 " . htmlspecialchars($m['message']) . "
