@@ -1,11 +1,15 @@
 <?php 
 include 'db.php'; 
-session_start();
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
 include 'header.php'; 
 
-if (!isset($_SESSION['user_id'])) { header("Location: login.php"); exit; }
+if (!isset($_SESSION['user_id'])) { 
+    pg_close($db);
+    header("Location: login.php"); 
+    exit; 
+}
 
-$search = isset($_GET['search']) ? $db->real_escape_string($_GET['search']) : '';
+$search = isset($_GET['search']) ? pg_escape_string($db, trim($_GET['search'])) : '';
 
 // Базовый запрос
 $sql = "SELECT id, username, avatar_path, gender, status_text, last_active FROM users";
@@ -13,17 +17,20 @@ $sql = "SELECT id, username, avatar_path, gender, status_text, last_active FROM 
 // Если есть поиск
 if (!empty($search)) {
     // Ищем по точному ID или по части ника
-    $sql .= " WHERE id = '" . intval($search) . "' OR username LIKE '%$search%'";
+    $search_id = (int)$search;
+    $sql .= " WHERE id = $search_id OR username ILIKE '%$search%'";
 }
 
 $sql .= " ORDER BY last_active DESC";
-$res = $db->query($sql);
+$res = pg_query($db, $sql);
 
 $men = [];
 $women = [];
 
-while($u = $res->fetch_assoc()) {
-    if($u['gender'] == 'm') { $men[] = $u; } else { $women[] = $u; }
+if ($res) {
+    while($u = pg_fetch_assoc($res)) {
+        if($u['gender'] == 'm') { $men[] = $u; } else { $women[] = $u; }
+    }
 }
 ?>
 
@@ -139,13 +146,13 @@ while($u = $res->fetch_assoc()) {
         <h3 class="gender-title title-m"><i class="fa-solid fa-mars"></i> Мужчины (<?php echo count($men); ?>)</h3>
         <div class="users-grid">
             <?php foreach($men as $u): ?>
-                <a href="profile.php?id=<?php echo $u['id']; ?>" class="user-card">
-                    <span class="user-id">ID: <?php echo $u['id']; ?></span>
-                    <?php if ($u['last_active'] > date('Y-m-d H:i:s', strtotime('-5 minutes'))): ?>
+                <a href="profile.php?id=<?php echo (int)$u['id']; ?>" class="user-card">
+                    <span class="user-id">ID: <?php echo (int)$u['id']; ?></span>
+                    <?php if (!empty($u['last_active']) && $u['last_active'] > date('Y-m-d H:i:s', strtotime('-5 minutes'))): ?>
                         <div class="status-online" title="В сети"></div>
                     <?php endif; ?>
-                    <img src="<?php echo $u['avatar_path'] ?: 'img/default_m.png'; ?>" class="user-ava">
-                    <span class="user-name"><?php echo $u['username']; ?></span>
+                    <img src="<?php echo !empty($u['avatar_path']) ? htmlspecialchars($u['avatar_path']) : 'img/default_m.png'; ?>" class="user-ava">
+                    <span class="user-name"><?php echo htmlspecialchars($u['username']); ?></span>
                     <span class="user-status"><?php echo htmlspecialchars($u['status_text'] ?: 'Новый житель'); ?></span>
                 </a>
             <?php endforeach; ?>
@@ -158,13 +165,13 @@ while($u = $res->fetch_assoc()) {
         <h3 class="gender-title title-w"><i class="fa-solid fa-venus"></i> Женщины (<?php echo count($women); ?>)</h3>
         <div class="users-grid">
             <?php foreach($women as $u): ?>
-                <a href="profile.php?id=<?php echo $u['id']; ?>" class="user-card">
-                    <span class="user-id">ID: <?php echo $u['id']; ?></span>
-                    <?php if ($u['last_active'] > date('Y-m-d H:i:s', strtotime('-5 minutes'))): ?>
+                <a href="profile.php?id=<?php echo (int)$u['id']; ?>" class="user-card">
+                    <span class="user-id">ID: <?php echo (int)$u['id']; ?></span>
+                    <?php if (!empty($u['last_active']) && $u['last_active'] > date('Y-m-d H:i:s', strtotime('-5 minutes'))): ?>
                         <div class="status-online" title="В сети"></div>
                     <?php endif; ?>
-                    <img src="<?php echo $u['avatar_path'] ?: 'img/default_w.png'; ?>" class="user-ava">
-                    <span class="user-name"><?php echo $u['username']; ?></span>
+                    <img src="<?php echo !empty($u['avatar_path']) ? htmlspecialchars($u['avatar_path']) : 'img/default_w.png'; ?>" class="user-ava">
+                    <span class="user-name"><?php echo htmlspecialchars($u['username']); ?></span>
                     <span class="user-status"><?php echo htmlspecialchars($u['status_text'] ?: 'Жительница города'); ?></span>
                 </a>
             <?php endforeach; ?>
@@ -173,5 +180,7 @@ while($u = $res->fetch_assoc()) {
     <?php endif; ?>
 </div>
 
-<?php echo "</div></body></html>"; ?>
-
+<?php 
+pg_close($db);
+echo "</div></body></html>"; 
+?>
