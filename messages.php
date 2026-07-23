@@ -1,6 +1,10 @@
-<?php 
-include 'db.php'; 
-session_start();
+<?php
+// Вывод ошибок для отладки
+ini_set('display_errors', 1);
+error_reporting(E_ALL);
+
+include 'db.php';
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
 // =========================================================================
 // ЧАСТЬ 1: API ДЛЯ GODOT (ЕСЛИ ПРИШЕЛ JSON)
@@ -16,6 +20,7 @@ if ($request && isset($request['action'])) {
 
     if ($user_id <= 0) {
         echo json_encode(["error" => "UNAUTHORIZED_API_USER"]);
+        pg_close($db);
         exit;
     }
 
@@ -25,15 +30,15 @@ if ($request && isset($request['action'])) {
                     CASE WHEN sender_id = $user_id THEN receiver_id ELSE sender_id END AS partner_id 
                   FROM messages 
                   WHERE sender_id = $user_id OR receiver_id = $user_id";
-        $res = $db->query($query);
+        $res = pg_query($db, $query);
         
         $chats = [];
         if ($res) {
-            while ($row = $res->fetch_assoc()) {
+            while ($row = pg_fetch_assoc($res)) {
                 $p_id = (int)$row['partner_id'];
-                $u_res = $db->query("SELECT username FROM users WHERE id = $p_id");
-                if ($u_res && $u_res->num_rows > 0) {
-                    $u_data = $u_res->fetch_assoc();
+                $u_res = pg_query($db, "SELECT username FROM users WHERE id = $p_id");
+                if ($u_res && pg_num_rows($u_res) > 0) {
+                    $u_data = pg_fetch_assoc($u_res);
                     $chats[] = [
                         "id" => $p_id,
                         "username" => $u_data['username']
@@ -42,6 +47,7 @@ if ($request && isset($request['action'])) {
             }
         }
         echo json_encode(["chats" => $chats]);
+        pg_close($db);
         exit;
     }
 
@@ -56,11 +62,11 @@ if ($request && isset($request['action'])) {
                      OR (m.sender_id = $target_id AND m.receiver_id = $user_id)
                   ORDER BY m.id ASC LIMIT 100";
                   
-        $res = $db->query($query);
+        $res = pg_query($db, $query);
         $messages = [];
         
         if ($res) {
-            while ($row = $res->fetch_assoc()) {
+            while ($row = pg_fetch_assoc($res)) {
                 $text = $row['message'];
                 // Если сообщение VIP, оформляем его в золотой BBCode для Godot RichTextLabel
                 if ((int)$row['is_vip'] === 1) {
@@ -77,54 +83,63 @@ if ($request && isset($request['action'])) {
             }
         }
         echo json_encode(["messages" => $messages]);
+        pg_close($db);
         exit;
     }
 
     // 3. Отправить сообщение
     if ($action === 'send_message') {
         $target_id = isset($request['target_id']) ? (int)$request['target_id'] : 0;
-        $message = isset($request['message']) ? $db->real_escape_string(trim($request['message'])) : '';
+        $message = isset($request['message']) ? pg_escape_string($db, trim($request['message'])) : '';
         $is_vip = isset($request['is_vip']) ? (int)$request['is_vip'] : 0;
 
         if ($target_id <= 0 || $message === '') {
             echo json_encode(["error" => "EMPTY_DATA"]);
+            pg_close($db);
             exit;
         }
 
         // Проверка на VIP-сообщение (снимаем 10 CM)
         if ($is_vip === 1) {
-            $user_data = $db->query("SELECT citymoney FROM users WHERE id = $user_id")->fetch_assoc();
-            if ((int)$user_data['citymoney'] < 10) {
+            $user_res = pg_query($db, "SELECT citymoney FROM users WHERE id = $user_id");
+            $user_data = ($user_res) ? pg_fetch_assoc($user_res) : null;
+            if (!$user_data || (int)$user_data['citymoney'] < 10) {
                 echo json_encode(["error" => "ERROR_MONEY"]);
+                pg_close($db);
                 exit;
             }
-            $db->query("UPDATE users SET citymoney = citymoney - 10 WHERE id = $user_id");
+            pg_query($db, "UPDATE users SET citymoney = citymoney - 10 WHERE id = $user_id");
         }
 
         $insert = "INSERT INTO messages (sender_id, receiver_id, message, is_vip, created_at) 
-                   VALUES ($user_id, $target_id, '$message', $is_vip, NOW())";
+                   VALUES ($user_id, $target_id, '$message', $is_vip, NOW()) RETURNING id";
         
-        if ($db->query($insert)) {
-            echo json_encode(["status" => "OK", "message_id" => $db->insert_id]);
+        $res = pg_query($db, $insert);
+        if ($res) {
+            $row = pg_fetch_assoc($res);
+            echo json_encode(["status" => "OK", "message_id" => (int)$row['id']]);
         } else {
             echo json_encode(["error" => "DB_ERROR"]);
         }
+        pg_close($db);
         exit;
     }
 
     // 4. Редактировать сообщение (только свое!)
     if ($action === 'edit_message') {
         $message_id = isset($request['message_id']) ? (int)$request['message_id'] : 0;
-        $new_text = isset($request['message']) ? $db->real_escape_string(trim($request['message'])) : '';
+        $new_text = isset($request['message']) ? pg_escape_string($db, trim($request['message'])) : '';
 
         if ($message_id <= 0 || $new_text === '') {
             echo json_encode(["error" => "EMPTY_DATA"]);
+            pg_close($db);
             exit;
         }
 
         $update = "UPDATE messages SET message = '$new_text' WHERE id = $message_id AND sender_id = $user_id";
-        if ($db->query($update)) {
-            if ($db->affected_rows > 0) {
+        $res = pg_query($db, $update);
+        if ($res) {
+            if (pg_affected_rows($res) > 0) {
                 echo json_encode(["status" => "OK"]);
             } else {
                 echo json_encode(["error" => "ACCESS_DENIED_OR_NO_CHANGES"]);
@@ -132,6 +147,7 @@ if ($request && isset($request['action'])) {
         } else {
             echo json_encode(["error" => "DB_ERROR"]);
         }
+        pg_close($db);
         exit;
     }
 
@@ -141,12 +157,14 @@ if ($request && isset($request['action'])) {
 
         if ($message_id <= 0) {
             echo json_encode(["error" => "EMPTY_DATA"]);
+            pg_close($db);
             exit;
         }
 
         $delete = "DELETE FROM messages WHERE id = $message_id AND sender_id = $user_id";
-        if ($db->query($delete)) {
-            if ($db->affected_rows > 0) {
+        $res = pg_query($db, $delete);
+        if ($res) {
+            if (pg_affected_rows($res) > 0) {
                 echo json_encode(["status" => "OK"]);
             } else {
                 echo json_encode(["error" => "ACCESS_DENIED"]);
@@ -154,6 +172,7 @@ if ($request && isset($request['action'])) {
         } else {
             echo json_encode(["error" => "DB_ERROR"]);
         }
+        pg_close($db);
         exit;
     }
 }
@@ -178,17 +197,20 @@ $to_id = isset($_GET['to']) ? (int)$_GET['to'] : 0;
 
 if ($to_id <= 0) {
     echo "<div style='color:#fff; padding:20px; text-align:center;'>Выберите получателя в меню чатов.</div>";
+    pg_close($db);
     exit;
 }
 
 // Получаем данные собеседника и баланс игрока для проверки
-$res = $db->query("SELECT username, avatar_path, gender FROM users WHERE id = $to_id");
-$partner = $res->fetch_assoc();
+$res = pg_query($db, "SELECT username, avatar_path, gender FROM users WHERE id = $to_id");
+$partner = ($res) ? pg_fetch_assoc($res) : null;
 
-$my_data = $db->query("SELECT citymoney FROM users WHERE id = $my_id")->fetch_assoc();
+$my_res = pg_query($db, "SELECT citymoney FROM users WHERE id = $my_id");
+$my_data = ($my_res) ? pg_fetch_assoc($my_res) : null;
 
 if (!$partner) { 
     echo "<div style='color:#fff; padding:20px; text-align:center;'>Житель не найден.</div>"; 
+    pg_close($db);
     exit; 
 }
 
@@ -201,7 +223,7 @@ include 'header.php';
         <a href="chat.php" style="color: #555;"><i class="fa-solid fa-chevron-left"></i></a>
         <a href="profile.php?id=<?php echo $to_id; ?>">
             <?php if(!empty($partner['avatar_path'])): ?>
-                <img src="<?php echo $partner['avatar_path']; ?>" style="width: 35px; height: 35px; border-radius: 50%; object-fit: cover; border: 1px solid var(--accent);">
+                <img src="<?php echo htmlspecialchars($partner['avatar_path']); ?>" style="width: 35px; height: 35px; border-radius: 50%; object-fit: cover; border: 1px solid var(--accent);">
             <?php else: ?>
                 <div style="width: 35px; height: 35px; background: #252530; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.2rem;">
                     <?php echo ($partner['gender'] == 'm' ? '👦' : '👧'); ?>
@@ -209,8 +231,8 @@ include 'header.php';
             <?php endif; ?>
         </a>
         <div style="flex: 1;">
-            <h4 style="margin: 0; color: #fff; font-size: 0.9rem;"><?php echo $partner['username']; ?></h4>
-            <span style="font-size: 0.65rem; color: #00d4ff;">Баланс: <?php echo number_format($my_data['citymoney']); ?> СМ</span>
+            <h4 style="margin: 0; color: #fff; font-size: 0.9rem;"><?php echo htmlspecialchars($partner['username']); ?></h4>
+            <span style="font-size: 0.65rem; color: #00d4ff;">Баланс: <?php echo number_format($my_data['citymoney'] ?? 0); ?> СМ</span>
         </div>
     </div>
 
@@ -315,4 +337,7 @@ include 'header.php';
     loadMessages();
 </script>
 
-<?php include 'footer.php'; ?>
+<?php 
+pg_close($db);
+include 'footer.php'; 
+?>
