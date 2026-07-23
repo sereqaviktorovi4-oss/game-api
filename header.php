@@ -24,8 +24,8 @@ if (isset($_SESSION['user_id'])) {
         $notif_friends = $row_f['cnt'] ?? 0;
     }
     
-    // Считаем непрочитанные сообщения (проверка полем receiver_id или recipient_id под вашу структуру)
-    $res_msgs = pg_query($db, "SELECT COUNT(*) as cnt FROM messages WHERE recipient_id = $uid AND is_read = false");
+    // Считаем непрочитанные сообщения (исправлено на receiver_id)
+    $res_msgs = pg_query($db, "SELECT COUNT(*) as cnt FROM messages WHERE receiver_id = $uid AND is_read = 0");
     if ($res_msgs) {
         $row_m = pg_fetch_assoc($res_msgs);
         $notif_msgs = $row_m['cnt'] ?? 0;
