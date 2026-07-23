@@ -1,6 +1,6 @@
 <?php
 include 'db.php';
-session_start();
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
 $my_username = $_SESSION['username'] ?? '';
 
@@ -12,11 +12,11 @@ $sql = "
     ORDER BY c.id DESC LIMIT 40
 ";
 
-$result = $db->query($sql);
+$result = pg_query($db, $sql);
 $rows = [];
 
 if ($result) {
-    while($m = $result->fetch_assoc()) {
+    while($m = pg_fetch_assoc($result)) {
         $is_me = ($m['username'] === $my_username);
         
         // Прямое управление позицией (flex-end - право, flex-start - лево)
@@ -46,4 +46,3 @@ if ($result) {
 // Новые сообщения внизу
 echo implode('', array_reverse($rows));
 ?>
-
