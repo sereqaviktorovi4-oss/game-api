@@ -1,13 +1,13 @@
 <?php
 include 'db.php';
-session_start();
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
 // Проверка авторизации
 if (!isset($_SESSION['user_id'])) { 
     die("Доступ запрещен. Пожалуйста, войдите в аккаунт."); 
 }
 
-$user_id = $_SESSION['user_id'];
+$user_id = (int)$_SESSION['user_id'];
 
 // 1. ОПРЕДЕЛЕНИЕ ПУТЕЙ (Используем абсолютные пути сервера)
 $basePath = __DIR__ . DIRECTORY_SEPARATOR;
@@ -20,6 +20,7 @@ $directories = [$uploadsFolder, $avatarsFolder, $photosFolder];
 foreach ($directories as $dir) {
     if (!file_exists($basePath . $dir)) {
         if (!mkdir($basePath . $dir, 0777, true)) {
+            pg_close($db);
             die("Критическая ошибка: Не удалось создать папку $dir. Проверьте права доступа в корне сайта.");
         }
     }
@@ -50,9 +51,9 @@ function processUpload($file, $subDir, $prefix) {
         return ["error" => "Файл не является изображением."];
     }
 
-    // Ограничение размера (25 МБ)
+    // Ограничение размера (5 МБ)
     if ($file["size"] > 5 * 1024 * 1024) {
-        return ["error" => "Файл слишком большой. Максимальный размер — 25 МБ."];
+        return ["error" => "Файл слишком большой. Максимальный размер — 5 МБ."];
     }
 
     // Генерация уникального имени
@@ -77,11 +78,13 @@ function processUpload($file, $subDir, $prefix) {
 if (isset($_FILES['avatar_file'])) {
     $res = processUpload($_FILES['avatar_file'], $avatarsFolder, "avatar");
     if (isset($res['success'])) {
-        $path = $db->real_escape_string($res['success']);
-        $db->query("UPDATE users SET avatar_path='$path' WHERE id=$user_id");
+        $path = pg_escape_string($db, $res['success']);
+        pg_query($db, "UPDATE users SET avatar_path='$path' WHERE id=$user_id");
+        pg_close($db);
         header("Location: profile.php?status=avatar_ok");
         exit;
     } else {
+        pg_close($db);
         die("Ошибка при смене аватара: " . $res['error']);
     }
 }
@@ -90,15 +93,17 @@ if (isset($_FILES['avatar_file'])) {
 if (isset($_FILES['photo_file'])) {
     $res = processUpload($_FILES['photo_file'], $photosFolder, "photo");
     if (isset($res['success'])) {
-        $path = $db->real_escape_string($res['success']);
-        $db->query("INSERT INTO user_photos (user_id, photo_path) VALUES ($user_id, '$path')");
+        $path = pg_escape_string($db, $res['success']);
+        pg_query($db, "INSERT INTO user_photos (user_id, photo_path) VALUES ($user_id, '$path')");
+        pg_close($db);
         header("Location: profile.php?status=photo_ok#gallery");
         exit;
     } else {
+        pg_close($db);
         die("Ошибка при добавлении в галерею: " . $res['error']);
     }
 }
 
+pg_close($db);
 header("Location: profile.php");
 exit;
-
