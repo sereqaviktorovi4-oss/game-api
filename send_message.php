@@ -1,6 +1,6 @@
-<?php
-include 'db.php';
-session_start();
+<?php 
+include 'db.php'; 
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
 if (!isset($_SESSION['user_id'])) { 
     exit("NOT_AUTH"); 
@@ -8,16 +8,16 @@ if (!isset($_SESSION['user_id'])) {
 
 $user_id = (int)$_SESSION['user_id'];
 
-// Одним запросом берем и ник, и баланс
-$res_u = $db->query("SELECT username, citymoney FROM users WHERE id = $user_id");
-$u_data = $res_u->fetch_assoc();
+// Одним запросом берем и ник, и баланс через PostgreSQL
+$res_u = pg_query($db, "SELECT username, citymoney FROM users WHERE id = $user_id");
+$u_data = ($res_u) ? pg_fetch_assoc($res_u) : null;
 
 if (!$u_data) {
     exit("USER_NOT_FOUND");
 }
 
-$username = $db->real_escape_string($u_data['username']);
-$message = isset($_POST['message']) ? $db->real_escape_string(trim($_POST['message'])) : '';
+$username = pg_escape_string($db, $u_data['username']);
+$message = isset($_POST['message']) ? pg_escape_string($db, trim($_POST['message'])) : '';
 $is_vip = (isset($_POST['is_vip']) && $_POST['is_vip'] == '1') ? 1 : 0;
 
 if (empty($message)) { 
@@ -30,7 +30,7 @@ if ($is_vip === 1) {
     if ($u_data['citymoney'] < $price) {
         exit("ERROR_MONEY"); 
     }
-    $db->query("UPDATE users SET citymoney = citymoney - $price WHERE id = $user_id");
+    pg_query($db, "UPDATE users SET citymoney = citymoney - $price WHERE id = $user_id");
 }
 
 // ПРОВЕРКА: Куда отправляем?
@@ -45,10 +45,11 @@ if (isset($_POST['receiver_id']) && (int)$_POST['receiver_id'] > 0) {
     $sql = "INSERT INTO chat (user_id, username, message, is_vip) VALUES ($user_id, '$username', '$message', $is_vip)";
 }
 
-if ($db->query($sql)) {
+$result = pg_query($db, $sql);
+if ($result) {
     echo "SUCCESS";
 } else {
-    // Если здесь выдает SQL_ERROR, значит в таблице 'chat' не хватает колонки 'is_vip' или 'user_id'
-    echo "SQL_ERROR: " . $db->error;
+    // Вывод ошибки PostgreSQL, если что-то пойдет не так
+    echo "SQL_ERROR: " . pg_last_error($db);
 }
 ?>
