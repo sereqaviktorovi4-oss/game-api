@@ -16,7 +16,7 @@ if (isset($_GET['delete'])) {
 }
 
 // ОБНОВЛЕННЫЙ ЗАПРОС: добавили u.last_seen и u.platform
-$friends_query = $db->query("
+pg_query($db, "SELECT ...");
     SELECT u.id, u.username, u.gender, u.avatar_path, u.last_seen, u.platform,
     (SELECT COUNT(*) FROM messages WHERE sender_id = u.id AND receiver_id = $my_id AND is_read = 0) as unread_msgs
     FROM users u 
