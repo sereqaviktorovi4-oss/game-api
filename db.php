@@ -1,7 +1,22 @@
 <?php
-// db.php — для PostgreSQL на Render с автосозданием сессий в БД
+// db.php — исправленная версия для PostgreSQL и стабильных сессий на Render
 
-// 1. Подключаемся к базе данных PostgreSQL
+// 1. Указываем общий системный путь для файлов сессий, чтобы они не терялись
+$session_path = sys_get_temp_dir();
+session_save_path($session_path);
+
+// 2. Настраиваем параметры куки сессии для домена Render
+ini_set('session.cookie_lifetime', 86400);
+ini_set('session.gc_maxlifetime', 86400);
+ini_set('session.cookie_path', '/');
+ini_set('session.use_strict_mode', '1');
+
+// Запускаем сессию безопасно, если она еще не запущена
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+// 3. Подключение к базе данных PostgreSQL
 $host     = "dpg-d9grrh6pbkes73c77q80-a"; 
 $port     = "5432";
 $user     = "sereqa";
@@ -13,61 +28,5 @@ $db = pg_connect($conn_string);
 
 if (!$db) {
     die("Ошибка подключения к БД PostgreSQL");
-}
-
-// 2. Автоматически создаем таблицу sessions, если её ещё нет в базе
-pg_query($db, "CREATE TABLE IF NOT EXISTS sessions (
-    id VARCHAR(255) PRIMARY KEY,
-    data TEXT,
-    expires INT
-);");
-
-// 3. Настраиваем сохранение сессий через пользовательский обработчик в PostgreSQL
-ini_set('session.save_handler', 'user');
-
-session_set_save_handler(
-    function($path, $name) { 
-        return true; 
-    },
-    function() { 
-        return true; 
-    },
-    function($id) {
-        global $db;
-        $id_escaped = pg_escape_string($db, $id);
-        $res = pg_query($db, "SELECT data FROM sessions WHERE id = '$id_escaped'");
-        if ($res && $row = pg_fetch_assoc($res)) {
-            return $row['data'];
-        }
-        return '';
-    },
-    function($id, $data) {
-        global $db;
-        $id_escaped = pg_escape_string($db, $id);
-        $data_escaped = pg_escape_string($db, $data);
-        $expires = time() + 86400; // Время жизни сессии: 1 день
-        
-        $query = "INSERT INTO sessions (id, data, expires) VALUES ('$id_escaped', '$data_escaped', $expires) 
-                  ON CONFLICT (id) DO UPDATE SET data = '$data_escaped', expires = $expires";
-        pg_query($db, $query);
-        return true;
-    },
-    function($id) {
-        global $db;
-        $id_escaped = pg_escape_string($db, $id);
-        pg_query($db, "DELETE FROM sessions WHERE id = '$id_escaped'");
-        return true;
-    },
-    function($maxlifetime) {
-        global $db;
-        $expires = time();
-        pg_query($db, "DELETE FROM sessions WHERE expires < $expires");
-        return true;
-    }
-);
-
-// 4. Безопасный запуск сессии для всего проекта
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
 }
 ?>
