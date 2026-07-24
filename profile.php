@@ -1,9 +1,12 @@
 <?php 
 include 'db.php'; 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
-include 'header.php'; 
 
-if (!isset($_SESSION['user_id'])) { header("Location: login.php"); exit; }
+if (!isset($_SESSION['user_id'])) { 
+    pg_close($db);
+    header("Location: login.php"); 
+    exit; 
+}
 
 $my_id = (int)$_SESSION['user_id'];
 $view_id = isset($_GET['id']) ? (int)$_GET['id'] : $my_id;
@@ -12,7 +15,13 @@ $is_own_profile = ($view_id === $my_id);
 $res = pg_query($db, "SELECT * FROM users WHERE id=$view_id");
 $user = ($res) ? pg_fetch_assoc($res) : null;
 
-if (!$user) { echo "<h2 style='text-align:center;'>Житель не найден в базе данных города.</h2>"; exit; }
+if (!$user) { 
+    include 'header.php';
+    echo "<h2 style='text-align:center;'>Житель не найден в базе данных города.</h2>"; 
+    pg_close($db);
+    echo "</div></body></html>";
+    exit; 
+}
 
 // Проверка статуса дружбы
 $friend_status = 'none';
@@ -29,6 +38,9 @@ if (!$is_own_profile) {
 $photos = pg_query($db, "SELECT * FROM user_photos WHERE user_id=$view_id ORDER BY id DESC LIMIT 12");
 $friends_count_res = pg_query($db, "SELECT id FROM friends WHERE (user_id=$view_id OR friend_id=$view_id) AND status='accepted'");
 $friends_count = ($friends_count_res) ? pg_num_rows($friends_count_res) : 0;
+
+// Подключаем шапку ПОСЛЕ всех возможных редиректов/завершений, чтобы не было ошибок заголовков
+include 'header.php'; 
 ?>
 
 <style>
@@ -58,7 +70,6 @@ $friends_count = ($friends_count_res) ? pg_num_rows($friends_count_res) : 0;
     .shop-item img { width: 50px; height: 50px; object-fit: contain; margin-bottom: 5px; }
     .shop-item span { display: block; font-size: 0.6rem; color: #888; text-transform: uppercase; }
 
-    /* Анимация и стиль кнопки «Перейти в свою локацию» */
     .btn-personal-location {
         background: linear-gradient(45deg, #ff00ff, #8e2de2);
         color: #fff;
@@ -86,7 +97,7 @@ $friends_count = ($friends_count_res) ? pg_num_rows($friends_count_res) : 0;
             <div class="avatar-border"></div>
             <div class="avatar-main">
                 <?php if (!empty($user['avatar_path'])): ?>
-                    <img src="<?php echo $user['avatar_path']; ?>" style="width: 100%; height: 100%; object-fit: cover;">
+                    <img src="<?php echo htmlspecialchars($user['avatar_path']); ?>" style="width: 100%; height: 100%; object-fit: cover;">
                 <?php else: ?>
                     <div style="font-size: 5rem; margin-top: 25px;"><?php echo ($user['gender'] == 'm' ? '👦' : '👧'); ?></div>
                 <?php endif; ?>
@@ -99,13 +110,12 @@ $friends_count = ($friends_count_res) ? pg_num_rows($friends_count_res) : 0;
             <?php endif; ?>
         </div>
 
-        <h2 style="color: var(--accent); margin-bottom: 5px;"><?php echo $user['username']; ?></h2>
+        <h2 style="color: var(--accent); margin-bottom: 5px;"><?php echo htmlspecialchars($user['username']); ?></h2>
         
         <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px;">
             <?php if ($is_own_profile): ?>
                 <a href="edit_profile.php" class="btn-action" style="text-decoration: none; font-size: 0.85rem; padding: 10px;"><i class="fa-solid fa-user-gear"></i> Настройки профиля</a>
                 
-                <!-- КНОПКА ПЕРЕХОДА В ЛИЧНУЮ ЛОКАЦИЮ -->
                 <?php if (!empty($user['plot_coords'])): ?>
                     <a href="gamedirect://teleport?location=<?php echo urlencode($user['plot_coords']); ?>" class="btn-personal-location">
                         <i class="fa-solid fa-house-chimney"></i> 🏠 В СВОЮ ЛОКАЦИЮ (<?php echo htmlspecialchars($user['plot_coords']); ?>)
@@ -113,26 +123,26 @@ $friends_count = ($friends_count_res) ? pg_num_rows($friends_count_res) : 0;
                 <?php endif; ?>
 
             <?php else: ?>
-                <a href="messages.php?to=<?php echo $view_id; ?>" class="btn-action" style="text-decoration: none; font-size: 0.85rem; padding: 10px;"><i class="fa-solid fa-paper-plane"></i> Написать сообщение</a>
+                <a href="messages.php?to=<?php echo (int)$view_id; ?>" class="btn-action" style="text-decoration: none; font-size: 0.85rem; padding: 10px;"><i class="fa-solid fa-paper-plane"></i> Написать сообщение</a>
                 <button onclick="document.getElementById('giftModal').style.display='flex'" class="btn-action" style="background: #1a1a24; color: gold; border: 1px solid #444; font-size: 0.85rem; padding: 10px; cursor: pointer;"><i class="fa-solid fa-gift"></i> Сделать подарок</button>
                 
                 <?php if ($friend_status == 'none'): ?>
-                    <a href="friends_logic.php?action=add&id=<?php echo $view_id; ?>" class="btn-action" style="background: var(--secondary); text-decoration: none; font-size: 0.85rem; padding: 10px;"><i class="fa-solid fa-user-plus"></i> Добавить в друзья</a>
+                    <a href="friends_logic.php?action=add&id=<?php echo (int)$view_id; ?>" class="btn-action" style="background: var(--secondary); text-decoration: none; font-size: 0.85rem; padding: 10px;"><i class="fa-solid fa-user-plus"></i> Добавить в друзья</a>
                 <?php elseif ($friend_status == 'pending'): ?>
                     <?php if ($is_sender): ?>
                         <button class="btn-action" style="background: #444; font-size: 0.85rem; padding: 10px; cursor: default;" disabled><i class="fa-solid fa-clock"></i> Заявка отправлена</button>
                     <?php else: ?>
-                        <a href="friends_logic.php?action=accept&id=<?php echo $view_id; ?>" class="btn-action" style="background: #28a745; text-decoration: none; font-size: 0.85rem; padding: 10px;"><i class="fa-solid fa-check"></i> Принять дружбу</a>
+                        <a href="friends_logic.php?action=accept&id=<?php echo (int)$view_id; ?>" class="btn-action" style="background: #28a745; text-decoration: none; font-size: 0.85rem; padding: 10px;"><i class="fa-solid fa-check"></i> Принять дружбу</a>
                     <?php endif; ?>
                 <?php elseif ($friend_status == 'accepted'): ?>
-                    <a href="friends_logic.php?action=delete&id=<?php echo $view_id; ?>" class="btn-action" style="background: #6610f2; text-decoration: none; font-size: 0.85rem; padding: 10px;" onclick="return confirm('Удалить из друзей?')"><i class="fa-solid fa-user-minus"></i> Удалить из друзей</a>
+                    <a href="friends_logic.php?action=delete&id=<?php echo (int)$view_id; ?>" class="btn-action" style="background: #6610f2; text-decoration: none; font-size: 0.85rem; padding: 10px;" onclick="return confirm('Удалить из друзей?')"><i class="fa-solid fa-user-minus"></i> Удалить из друзей</a>
                 <?php endif; ?>
             <?php endif; ?>
         </div>
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px;">
             <div class="stat-box">
-                <div style="font-size: 1.2rem; color: var(--accent);"><?php echo $friends_count; ?></div>
+                <div style="font-size: 1.2rem; color: var(--accent);"><?php echo (int)$friends_count; ?></div>
                 <div style="font-size: 0.7rem; color: #777; text-transform: uppercase;">Друзей</div>
             </div>
             <div class="stat-box">
@@ -153,8 +163,8 @@ $friends_count = ($friends_count_res) ? pg_num_rows($friends_count_res) : 0;
         </div>
 
         <div style="text-align: left; font-size: 0.85rem; color: #bbb; background: #1a1a24; padding: 15px; border-radius: 12px; margin-top: 20px;">
-            <p style="margin: 5px 0;"><i class="fa-solid fa-location-arrow" style="width: 20px; color: var(--accent);"></i> Район: <b><?php echo !empty($user['district_name']) ? $user['district_name'] : 'Love Sector A'; ?></b></p>
-            <p style="margin: 5px 0;"><i class="fa-solid fa-house" style="width: 20px; color: var(--accent);"></i> Участок: <b><?php echo !empty($user['plot_coords']) ? $user['plot_coords'] : 'Не занят'; ?></b></p>
+            <p style="margin: 5px 0;"><i class="fa-solid fa-location-arrow" style="width: 20px; color: var(--accent);"></i> Район: <b><?php echo !empty($user['district_name']) ? htmlspecialchars($user['district_name']) : 'Love Sector A'; ?></b></p>
+            <p style="margin: 5px 0;"><i class="fa-solid fa-house" style="width: 20px; color: var(--accent);"></i> Участок: <b><?php echo !empty($user['plot_coords']) ? htmlspecialchars($user['plot_coords']) : 'Не занят'; ?></b></p>
             <p style="margin: 5px 0;"><i class="fa-solid fa-coins" style="width: 20px; color: gold;"></i> Капитал: <span style="color:gold;"><?php echo number_format($user['citymoney'] ?? 0); ?></span></p>
         </div>
     </div>
@@ -171,7 +181,7 @@ $friends_count = ($friends_count_res) ? pg_num_rows($friends_count_res) : 0;
                 <?php if ($photos && pg_num_rows($photos) > 0): ?>
                     <?php while($ph = pg_fetch_assoc($photos)): ?>
                         <div style="aspect-ratio: 1/1; border-radius: 10px; overflow: hidden; border: 2px solid #1c1c24;">
-                            <img src="<?php echo $ph['photo_path']; ?>" style="width: 100%; height: 100%; object-fit: cover;">
+                            <img src="<?php echo htmlspecialchars($ph['photo_path']); ?>" style="width: 100%; height: 100%; object-fit: cover;">
                         </div>
                     <?php endwhile; ?>
                 <?php else: ?>
@@ -238,7 +248,7 @@ function sendGift(url) {
     if(!confirm("Отправить этот подарок за 30 CM?")) return;
     
     let formData = new URLSearchParams();
-    formData.append('to_id', '<?php echo $view_id; ?>');
+    formData.append('to_id', '<?php echo (int)$view_id; ?>');
     formData.append('icon', url);
 
     fetch('send_gift.php', {
