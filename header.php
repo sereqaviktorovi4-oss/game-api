@@ -1,31 +1,31 @@
 <?php
-include 'db.php';
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
+include 'db.php';
 
 $notif_friends = 0; $notif_msgs = 0; $my_money = 0;
 
 if (isset($_SESSION['user_id'])) {
     $uid = (int)$_SESSION['user_id'];
     
-    // Обновляем статус пользователя
-    pg_query($db, "UPDATE users SET last_seen = NOW(), platform = 'web' WHERE id = $uid");
+    // Обновляем статус пользователя (проверь, как у тебя называется колонка: last_seen или last_active)
+    @pg_query($db, "UPDATE users SET last_active = NOW(), platform = 'web' WHERE id = $uid");
     
     // Получаем баланс игрока
-    $res_money = pg_query($db, "SELECT citymoney FROM users WHERE id=$uid");
+    $res_money = @pg_query($db, "SELECT citymoney FROM users WHERE id=$uid");
     if ($res_money && pg_num_rows($res_money) > 0) {
         $user_data = pg_fetch_assoc($res_money);
         $my_money = $user_data['citymoney'] ?? 0;
     }
     
     // Считаем заявки в друзья
-    $res_friends = pg_query($db, "SELECT COUNT(*) as cnt FROM friends WHERE friend_id = $uid AND status = 'pending'");
+    $res_friends = @pg_query($db, "SELECT COUNT(*) as cnt FROM friends WHERE friend_id = $uid AND status = 'pending'");
     if ($res_friends) {
         $row_f = pg_fetch_assoc($res_friends);
         $notif_friends = $row_f['cnt'] ?? 0;
     }
     
-    // Считаем непрочитанные сообщения (исправлено на receiver_id)
-    $res_msgs = pg_query($db, "SELECT COUNT(*) as cnt FROM messages WHERE receiver_id = $uid AND is_read = 0");
+    // Считаем непрочитанные сообщения
+    $res_msgs = @pg_query($db, "SELECT COUNT(*) as cnt FROM messages WHERE receiver_id = $uid AND is_read = 0");
     if ($res_msgs) {
         $row_m = pg_fetch_assoc($res_msgs);
         $notif_msgs = $row_m['cnt'] ?? 0;
