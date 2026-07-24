@@ -1,5 +1,5 @@
 <?php
-if (session_status() === PHP_SESSION_NONE) { session_start(); }
+
 include 'db.php';
 
 $notif_friends = 0; $notif_msgs = 0; $my_money = 0;
