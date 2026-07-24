@@ -9,10 +9,16 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 $my_id = (int)$_SESSION['user_id'];
-$view_id = isset($_GET['id']) ? (int)$_GET['id'] : $my_id;
+
+// Безопасно определяем ID просматриваемого профиля
+$view_id = isset($_GET['id']) && is_numeric($_GET['id']) ? (int)$_GET['id'] : $my_id;
+if ($view_id <= 0) {
+    $view_id = $my_id;
+}
+
 $is_own_profile = ($view_id === $my_id);
 
-$res = pg_query($db, "SELECT * FROM users WHERE id=$view_id");
+$res = pg_query($db, "SELECT * FROM users WHERE id = $view_id");
 $user = ($res) ? pg_fetch_assoc($res) : null;
 
 if (!$user) { 
@@ -39,7 +45,7 @@ $photos = pg_query($db, "SELECT * FROM user_photos WHERE user_id=$view_id ORDER 
 $friends_count_res = pg_query($db, "SELECT id FROM friends WHERE (user_id=$view_id OR friend_id=$view_id) AND status='accepted'");
 $friends_count = ($friends_count_res) ? pg_num_rows($friends_count_res) : 0;
 
-// Подключаем шапку ПОСЛЕ всех возможных редиректов/завершений, чтобы не было ошибок заголовков
+// Подключаем шапку ПОСЛЕ всех возможных редиректов/завершений
 include 'header.php'; 
 ?>
 
