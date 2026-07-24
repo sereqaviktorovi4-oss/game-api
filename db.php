@@ -1,7 +1,7 @@
 <?php
-// db.php — для PostgreSQL на Render с сохранением сессий в БД
+// db.php — для PostgreSQL на Render с автосозданием сессий в БД
 
-// 1. Сначала подключаемся к базе данных, чтобы соединение $db было доступно для обработчика сессий
+// 1. Подключаемся к базе данных PostgreSQL
 $host     = "dpg-d9grrh6pbkes73c77q80-a"; 
 $port     = "5432";
 $user     = "sereqa";
@@ -15,7 +15,14 @@ if (!$db) {
     die("Ошибка подключения к БД PostgreSQL");
 }
 
-// 2. Настраиваем сохранение сессий через пользовательский обработчик в PostgreSQL
+// 2. Автоматически создаем таблицу sessions, если её ещё нет в базе
+pg_query($db, "CREATE TABLE IF NOT EXISTS sessions (
+    id VARCHAR(255) PRIMARY KEY,
+    data TEXT,
+    expires INT
+);");
+
+// 3. Настраиваем сохранение сессий через пользовательский обработчик в PostgreSQL
 ini_set('session.save_handler', 'user');
 
 session_set_save_handler(
@@ -59,7 +66,7 @@ session_set_save_handler(
     }
 );
 
-// 3. Безопасный запуск сессии для всего проекта
+// 4. Безопасный запуск сессии для всего проекта
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
